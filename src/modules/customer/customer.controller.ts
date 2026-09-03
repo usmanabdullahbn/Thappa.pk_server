@@ -11,6 +11,7 @@ import { QrToken } from "../../models/QrToken";
 import { generateSixDigitCode } from "../../utils/sixDigitCode";
 import { haversineDistanceMeters } from "../../utils/haversine";
 import { verifyStampQrToken } from "../qr/qr.service";
+import { sendPushNotification } from "../../utils/push";
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(req.user!.userId);
@@ -19,11 +20,16 @@ export const getMe = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateMe = asyncHandler(async (req: Request, res: Response) => {
-  const { name, profileImageUrl } = req.body as { name?: string; profileImageUrl?: string };
+  const { name, profileImageUrl, expoPushToken } = req.body as {
+    name?: string;
+    profileImageUrl?: string;
+    expoPushToken?: string;
+  };
   const user = await User.findById(req.user!.userId);
   if (!user) throw new ApiError(404, "NOT_FOUND", "User not found");
   if (name) user.name = name;
   if (profileImageUrl) user.profileImageUrl = profileImageUrl;
+  if (expoPushToken) user.expoPushToken = expoPushToken;
   await user.save();
   res.json({ user });
 });
@@ -197,6 +203,27 @@ export const redeemQr = asyncHandler(async (req: Request, res: Response) => {
     });
   } finally {
     await session.endSession();
+  }
+
+  const customer = await User.findById(customerId).select("name expoPushToken");
+
+  const io = req.app.get("io");
+  io?.to(`branch:${branch!._id}`).emit("stamp:earned", {
+    branchId: String(branch!._id),
+    customerId: String(customerId),
+    customerName: customer?.name || "A customer",
+    currentStamps: card.currentStamps,
+    stampsRequired: card.stampsRequired,
+    rewardUnlocked: !!redemption,
+  });
+
+  if (redemption) {
+    io?.to(`customer:${customerId}`).emit("reward:unlocked", { redemption });
+    await sendPushNotification(customer?.expoPushToken, {
+      title: "🎉 Reward unlocked!",
+      body: `${business!.loyaltyRule.rewardDescription} — show your code to staff to redeem.`,
+      data: { redemptionId: String(redemption._id) },
+    });
   }
 
   res.json({

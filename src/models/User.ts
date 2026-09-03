@@ -13,6 +13,7 @@ export interface IUser extends Document {
   businessId?: Types.ObjectId;
   branchId?: Types.ObjectId;
   profileImageUrl?: string;
+  expoPushToken?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +30,7 @@ const userSchema = new Schema<IUser>(
     businessId: { type: Schema.Types.ObjectId, ref: "Business" },
     branchId: { type: Schema.Types.ObjectId, ref: "Branch" },
     profileImageUrl: { type: String },
+    expoPushToken: { type: String },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

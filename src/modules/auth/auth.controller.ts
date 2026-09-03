@@ -30,8 +30,14 @@ export const verifyOtpAndLogin = asyncHandler(async (req: Request, res: Response
 });
 
 export const googleSignIn = asyncHandler(async (req: Request, res: Response) => {
-  const { email, name } = req.body as { email: string; name: string };
-  const { user, tokens } = await authService.googleSignIn(email, name);
+  const { idToken } = req.body as { idToken: string };
+  const { user, tokens } = await authService.googleSignIn(idToken);
+  res.json({ user: serializeUser(user), ...tokens });
+});
+
+export const firebasePhoneLogin = asyncHandler(async (req: Request, res: Response) => {
+  const { idToken, name } = req.body as { idToken: string; name?: string };
+  const { user, tokens } = await authService.firebasePhoneLogin(idToken, name);
   res.json({ user: serializeUser(user), ...tokens });
 });
 

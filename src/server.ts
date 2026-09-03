@@ -11,10 +11,8 @@ async function main() {
   const server = http.createServer(app);
 
   // Real-time layer (Technical Guide §12). Rooms are named `branch:<branchId>`
-  // so the counter-tablet's GenerateQRPage can react instantly to a scan
-  // instead of polling. Emit `stamp:earned` to this room from the customer
-  // controller once you wire it up (kept minimal here to avoid a hard
-  // dependency for teams that skip real-time in their MVP).
+  // so the counter-tablet's GenerateQRPage reacts instantly to a scan instead
+  // of polling. `stamp:earned` is emitted from customer.controller.ts#redeemQr.
   const io = new SocketIOServer(server, {
     cors: { origin: env.clientOrigin.split(","), credentials: true },
   });

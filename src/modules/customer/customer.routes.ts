@@ -11,6 +11,7 @@ router.use(requireAuth, requireRole("CUSTOMER"));
 const updateMeSchema = z.object({
   name: z.string().min(1).optional(),
   profileImageUrl: z.string().url().optional(),
+  expoPushToken: z.string().optional(),
 });
 
 const redeemQrSchema = z
