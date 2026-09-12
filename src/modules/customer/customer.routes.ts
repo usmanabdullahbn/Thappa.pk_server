@@ -28,6 +28,10 @@ const redeemQrSchema = z
 router.get("/me", controller.getMe);
 router.patch("/me", validateBody(updateMeSchema), controller.updateMe);
 
+router.get("/campaigns", controller.listCampaigns);
+router.get("/campaigns/joined", controller.listJoinedCampaigns);
+router.post("/campaigns/:campaignId/join", controller.joinCampaign);
+
 router.get("/stamp-cards", controller.listStampCards);
 router.get("/stamp-cards/:id", controller.getStampCardDetail);
 

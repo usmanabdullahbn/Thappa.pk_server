@@ -23,10 +23,23 @@ const statusSchema = z.object({
   status: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "CANCELLED"]),
 });
 
+const createCampaignSchema = z.object({
+  businessId: z.string().regex(/^[a-f\d]{24}$/i, "must be a valid business id"),
+  headline: z.string().trim().min(3).max(80),
+  description: z.string().trim().min(10).max(500),
+  stampsRequired: z.number().int().min(1).max(50),
+  rewardDescription: z.string().trim().min(2).max(120),
+});
+
+const campaignStatusSchema = z.object({ isActive: z.boolean() });
+
 router.post("/businesses", validateBody(createBusinessSchema), controller.createBusiness);
 router.get("/businesses", controller.listBusinesses);
 router.get("/businesses/:id", controller.getBusinessDetail);
 router.patch("/businesses/:id/status", validateBody(statusSchema), controller.updateBusinessStatus);
+router.get("/campaigns", controller.listCampaigns);
+router.post("/campaigns", validateBody(createCampaignSchema), controller.createCampaign);
+router.patch("/campaigns/:id/status", validateBody(campaignStatusSchema), controller.updateCampaignStatus);
 router.get("/analytics/overview", controller.platformOverview);
 
 export default router;

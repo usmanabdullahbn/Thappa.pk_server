@@ -4,6 +4,7 @@ import { asyncHandler, ApiError } from "../../middleware/errorHandler";
 import { User } from "../../models/User";
 import { Business } from "../../models/Business";
 import { Branch } from "../../models/Branch";
+import { Campaign } from "../../models/Campaign";
 import { StampCard } from "../../models/StampCard";
 import { StampTransaction } from "../../models/StampTransaction";
 import { Redemption } from "../../models/Redemption";
@@ -32,6 +33,43 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
   if (expoPushToken) user.expoPushToken = expoPushToken;
   await user.save();
   res.json({ user });
+});
+
+const CAMPAIGN_BUSINESS_FIELDS = "name category logoUrl status";
+
+/** Admin-created campaigns that are switched on and belong to an ACTIVE business, newest first. */
+export const listCampaigns = asyncHandler(async (_req: Request, res: Response) => {
+  const campaigns = await Campaign.find({ isActive: true })
+    .sort({ createdAt: -1 })
+    .populate("businessId", CAMPAIGN_BUSINESS_FIELDS);
+  res.json({ data: campaigns.filter((campaign: any) => campaign.businessId?.status === "ACTIVE") });
+});
+
+export const listJoinedCampaigns = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.userId).select("joinedCampaigns");
+  if (!user) throw new ApiError(404, "NOT_FOUND", "User not found");
+  res.json({ data: user.joinedCampaigns });
+});
+
+/** Idempotent: joining a campaign the customer already joined is a no-op. */
+export const joinCampaign = asyncHandler(async (req: Request, res: Response) => {
+  const { campaignId } = req.params;
+  const campaign = mongoose.isValidObjectId(campaignId)
+    ? await Campaign.findOne({ _id: campaignId, isActive: true }).populate("businessId", "status")
+    : null;
+  if (!campaign || (campaign.businessId as any)?.status !== "ACTIVE") {
+    throw new ApiError(404, "CAMPAIGN_NOT_FOUND", "This campaign is no longer available");
+  }
+  const userId = req.user!.userId;
+
+  await User.updateOne(
+    { _id: userId, "joinedCampaigns.campaignId": { $ne: campaignId } },
+    { $push: { joinedCampaigns: { campaignId, joinedAt: new Date() } } }
+  );
+
+  const user = await User.findById(userId).select("joinedCampaigns");
+  if (!user) throw new ApiError(404, "NOT_FOUND", "User not found");
+  res.json({ data: user.joinedCampaigns });
 });
 
 export const listStampCards = asyncHandler(async (req: Request, res: Response) => {

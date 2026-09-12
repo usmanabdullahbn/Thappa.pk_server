@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
+import { isValidObjectId } from "mongoose";
 import { asyncHandler, ApiError } from "../../middleware/errorHandler";
 import { User } from "../../models/User";
 import { Business } from "../../models/Business";
 import { Branch } from "../../models/Branch";
+import { Campaign } from "../../models/Campaign";
 import { StampTransaction } from "../../models/StampTransaction";
 import { hashPassword } from "../auth/auth.service";
 
@@ -89,6 +91,53 @@ export const updateBusinessStatus = asyncHandler(async (req: Request, res: Respo
   const business = await Business.findByIdAndUpdate(req.params.id, { status }, { new: true });
   if (!business) throw new ApiError(404, "NOT_FOUND", "Business not found");
   res.json({ business });
+});
+
+const CAMPAIGN_BUSINESS_FIELDS = "name category status";
+
+export const listCampaigns = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await Campaign.find().sort({ createdAt: -1 }).populate("businessId", CAMPAIGN_BUSINESS_FIELDS);
+  res.json({ data });
+});
+
+export const createCampaign = asyncHandler(async (req: Request, res: Response) => {
+  const { businessId, headline, description, stampsRequired, rewardDescription } = req.body as {
+    businessId: string;
+    headline: string;
+    description: string;
+    stampsRequired: number;
+    rewardDescription: string;
+  };
+
+  const business = await Business.findById(businessId);
+  if (!business) throw new ApiError(404, "BUSINESS_NOT_FOUND", "Business not found");
+  if (business.status !== "ACTIVE") {
+    throw new ApiError(400, "BUSINESS_INACTIVE", "Campaigns can only be added for active businesses");
+  }
+
+  const campaign = await Campaign.create({
+    businessId: business._id,
+    headline,
+    description,
+    stampsRequired,
+    rewardDescription,
+    createdByAdminId: req.user!.userId,
+  });
+  await campaign.populate("businessId", CAMPAIGN_BUSINESS_FIELDS);
+
+  res.status(201).json({ campaign });
+});
+
+export const updateCampaignStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { isActive } = req.body as { isActive: boolean };
+  if (!isValidObjectId(req.params.id)) throw new ApiError(404, "NOT_FOUND", "Campaign not found");
+
+  const campaign = await Campaign.findByIdAndUpdate(req.params.id, { isActive }, { new: true }).populate(
+    "businessId",
+    CAMPAIGN_BUSINESS_FIELDS
+  );
+  if (!campaign) throw new ApiError(404, "NOT_FOUND", "Campaign not found");
+  res.json({ campaign });
 });
 
 export const platformOverview = asyncHandler(async (_req: Request, res: Response) => {

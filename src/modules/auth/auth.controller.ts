@@ -41,6 +41,18 @@ export const firebasePhoneLogin = asyncHandler(async (req: Request, res: Respons
   res.json({ user: serializeUser(user), ...tokens });
 });
 
+export const customerSignup = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as { name: string; phone: string; email: string; password: string };
+  const { user, tokens } = await authService.customerSignup(body);
+  res.status(201).json({ user: serializeUser(user), ...tokens });
+});
+
+export const customerLogin = asyncHandler(async (req: Request, res: Response) => {
+  const { email, password } = req.body as { email: string; password: string };
+  const { user, tokens } = await authService.customerLogin(email, password);
+  res.json({ user: serializeUser(user), ...tokens });
+});
+
 export const businessLogin = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body as { email: string; password: string };
   const { user, tokens } = await authService.passwordLogin(email, password, "BUSINESS");

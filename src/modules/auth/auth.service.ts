@@ -122,6 +122,54 @@ export async function firebasePhoneLogin(idToken: string, name?: string) {
   return { user, tokens: issueTokenPair(user) };
 }
 
+/** Email+password sign-up for CUSTOMER accounts created from the mobile app. */
+export async function customerSignup(input: { name: string; phone: string; email: string; password: string }) {
+  const email = input.email.toLowerCase();
+  const existing = await User.findOne({ $or: [{ email }, { phone: input.phone }] });
+  if (existing) {
+    const field = existing.email === email ? "email" : "phone number";
+    throw new ApiError(409, "ACCOUNT_EXISTS", `An account with this ${field} already exists. Please sign in instead.`);
+  }
+
+  const user = await User.create({
+    role: "CUSTOMER",
+    name: input.name,
+    email,
+    phone: input.phone,
+    authProvider: "PASSWORD",
+    passwordHash: await hashPassword(input.password),
+  });
+  return { user, tokens: issueTokenPair(user) };
+}
+
+/**
+ * Email+password login for CUSTOMER accounts. Returns 404 for an unknown email
+ * so the mobile app can point the customer to sign-up.
+ */
+export async function customerLogin(email: string, password: string) {
+  const user = await User.findOne({ email: email.toLowerCase(), role: "CUSTOMER" }).select("+passwordHash");
+  if (!user) {
+    throw new ApiError(404, "ACCOUNT_NOT_FOUND", "No account found with this email");
+  }
+  if (!user.passwordHash) {
+    throw new ApiError(
+      401,
+      "PASSWORD_NOT_SET",
+      user.authProvider === "GOOGLE"
+        ? "This account uses Google sign-in. Tap “Continue with Google” instead."
+        : "This account doesn’t have a password yet."
+    );
+  }
+  const match = await bcrypt.compare(password, user.passwordHash);
+  if (!match) {
+    throw new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password");
+  }
+  if (!user.isActive) {
+    throw new ApiError(403, "ACCOUNT_DISABLED", "This account has been disabled");
+  }
+  return { user, tokens: issueTokenPair(user) };
+}
+
 /** Email+password login shared by BUSINESS and ADMIN roles. */
 export async function passwordLogin(email: string, password: string, expectedRole: "BUSINESS" | "ADMIN") {
   const user = await User.findOne({ email: email.toLowerCase(), role: expectedRole }).select("+passwordHash");

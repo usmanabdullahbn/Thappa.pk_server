@@ -16,12 +16,21 @@ const verifyOtpSchema = z.object({
 const googleSchema = z.object({ idToken: z.string().min(10) });
 const firebasePhoneSchema = z.object({ idToken: z.string().min(10), name: z.string().optional() });
 const passwordLoginSchema = z.object({ email: z.string().email(), password: z.string().min(6) });
+const customerSignupSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  phone: z.string().regex(/^\+\d{8,15}$/, "must be in international format, e.g. +923001234567"),
+  email: z.string().trim().email(),
+  password: z.string().min(8).max(128),
+});
+const customerLoginSchema = z.object({ email: z.string().trim().email(), password: z.string().min(1) });
 const refreshSchema = z.object({ refreshToken: z.string().min(10) });
 
 router.post("/otp/send", authRateLimiter, validateBody(phoneSchema), controller.sendOtp);
 router.post("/otp/verify", authRateLimiter, validateBody(verifyOtpSchema), controller.verifyOtpAndLogin);
 router.post("/google", authRateLimiter, validateBody(googleSchema), controller.googleSignIn);
 router.post("/firebase-phone", authRateLimiter, validateBody(firebasePhoneSchema), controller.firebasePhoneLogin);
+router.post("/customer-signup", authRateLimiter, validateBody(customerSignupSchema), controller.customerSignup);
+router.post("/customer-login", authRateLimiter, validateBody(customerLoginSchema), controller.customerLogin);
 router.post("/business-login", authRateLimiter, validateBody(passwordLoginSchema), controller.businessLogin);
 router.post("/admin-login", authRateLimiter, validateBody(passwordLoginSchema), controller.adminLogin);
 router.post("/refresh", validateBody(refreshSchema), controller.refresh);
