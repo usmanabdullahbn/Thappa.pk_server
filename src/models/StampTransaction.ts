@@ -11,6 +11,7 @@ export interface IStampTransaction extends Document {
   customerId: Types.ObjectId;
   businessId: Types.ObjectId;
   branchId: Types.ObjectId;
+  campaignId?: Types.ObjectId;
   type: StampTransactionType;
   qrTokenNonce?: string;
   amountPaid?: number;
@@ -26,6 +27,7 @@ const stampTransactionSchema = new Schema<IStampTransaction>(
     customerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", required: true },
     branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
+    campaignId: { type: Schema.Types.ObjectId, ref: "Campaign" },
     type: {
       type: String,
       enum: ["EARN", "MANUAL_ADJUST_ADD", "MANUAL_ADJUST_REMOVE", "REDEEM_RESET"],

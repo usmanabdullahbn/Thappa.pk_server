@@ -101,12 +101,13 @@ export const listCampaigns = asyncHandler(async (_req: Request, res: Response) =
 });
 
 export const createCampaign = asyncHandler(async (req: Request, res: Response) => {
-  const { businessId, headline, description, stampsRequired, rewardDescription } = req.body as {
+  const { businessId, headline, description, stampsRequired, rewardDescription, expiresAt } = req.body as {
     businessId: string;
     headline: string;
     description: string;
     stampsRequired: number;
     rewardDescription: string;
+    expiresAt: string;
   };
 
   const business = await Business.findById(businessId);
@@ -121,6 +122,7 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     description,
     stampsRequired,
     rewardDescription,
+    expiresAt: new Date(expiresAt),
     createdByAdminId: req.user!.userId,
   });
   await campaign.populate("businessId", CAMPAIGN_BUSINESS_FIELDS);
@@ -133,6 +135,19 @@ export const updateCampaignStatus = asyncHandler(async (req: Request, res: Respo
   if (!isValidObjectId(req.params.id)) throw new ApiError(404, "NOT_FOUND", "Campaign not found");
 
   const campaign = await Campaign.findByIdAndUpdate(req.params.id, { isActive }, { new: true }).populate(
+    "businessId",
+    CAMPAIGN_BUSINESS_FIELDS
+  );
+  if (!campaign) throw new ApiError(404, "NOT_FOUND", "Campaign not found");
+  res.json({ campaign });
+});
+
+/** Sets a new expiry date — also used to extend a campaign that has already expired. */
+export const updateCampaignExpiry = asyncHandler(async (req: Request, res: Response) => {
+  const { expiresAt } = req.body as { expiresAt: string };
+  if (!isValidObjectId(req.params.id)) throw new ApiError(404, "NOT_FOUND", "Campaign not found");
+
+  const campaign = await Campaign.findByIdAndUpdate(req.params.id, { expiresAt: new Date(expiresAt) }, { new: true }).populate(
     "businessId",
     CAMPAIGN_BUSINESS_FIELDS
   );

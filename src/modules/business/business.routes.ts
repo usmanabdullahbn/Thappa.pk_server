@@ -38,6 +38,7 @@ const staffSchema = z.object({
 });
 
 const generateQrSchema = z.object({
+  campaignId: z.string().regex(/^[a-f\d]{24}$/i, "select an active campaign"),
   branchId: z.string().min(10),
   amountPaid: z.number().nonnegative().optional(),
 });
@@ -61,6 +62,7 @@ router.patch("/branches/:id", validateBody(branchUpdateSchema), controller.updat
 
 router.post("/staff", validateBody(staffSchema), controller.inviteStaff);
 
+router.get("/campaigns", controller.listActiveCampaigns);
 router.post("/qr/generate", validateBody(generateQrSchema), controller.generateQr);
 
 router.get("/customers", controller.listCustomers);

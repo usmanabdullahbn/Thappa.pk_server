@@ -8,6 +8,8 @@ export interface ICampaign extends Document {
   stampsRequired: number;
   rewardDescription: string;
   isActive: boolean;
+  /** After this moment the campaign is hidden from customers and can no longer be joined. */
+  expiresAt: Date;
   createdByAdminId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -21,12 +23,13 @@ const campaignSchema = new Schema<ICampaign>(
     stampsRequired: { type: Number, required: true, min: 1 },
     rewardDescription: { type: String, required: true, trim: true },
     isActive: { type: Boolean, default: true },
+    expiresAt: { type: Date, required: true },
     createdByAdminId: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
 );
 
-campaignSchema.index({ isActive: 1, createdAt: -1 });
+campaignSchema.index({ isActive: 1, expiresAt: 1 });
 campaignSchema.index({ businessId: 1 });
 
 export const Campaign = model<ICampaign>("Campaign", campaignSchema);

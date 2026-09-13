@@ -6,6 +6,7 @@ export interface IQrToken extends Document {
   nonce: string;
   branchId: Types.ObjectId;
   businessId: Types.ObjectId;
+  campaignId?: Types.ObjectId;
   issuedByStaffId: Types.ObjectId;
   amountPaid?: number;
   status: QrTokenStatus;
@@ -18,6 +19,7 @@ const qrTokenSchema = new Schema<IQrToken>(
     nonce: { type: String, required: true, unique: true },
     branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", required: true },
+    campaignId: { type: Schema.Types.ObjectId, ref: "Campaign" },
     issuedByStaffId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     amountPaid: { type: Number },
     status: { type: String, enum: ["ISSUED", "REDEEMED", "EXPIRED"], default: "ISSUED" },

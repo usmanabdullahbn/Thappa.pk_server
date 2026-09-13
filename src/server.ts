@@ -3,9 +3,14 @@ import { Server as SocketIOServer } from "socket.io";
 import { createApp } from "./app";
 import { connectDb } from "./config/db";
 import { env } from "./config/env";
+import { StampCard } from "./models/StampCard";
 
 async function main() {
   await connectDb();
+
+  // Replaces the old one-card-per-branch unique index with the campaign-aware
+  // one. Idempotent: only touches the stampcards collection's indexes.
+  await StampCard.syncIndexes();
 
   const app = createApp();
   const server = http.createServer(app);

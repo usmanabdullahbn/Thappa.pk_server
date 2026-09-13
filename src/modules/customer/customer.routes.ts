@@ -28,7 +28,10 @@ const redeemQrSchema = z
 router.get("/me", controller.getMe);
 router.patch("/me", validateBody(updateMeSchema), controller.updateMe);
 
+const campaignStampSchema = z.object({ qrToken: z.string().min(20) });
+
 router.get("/campaigns", controller.listCampaigns);
+router.post("/campaigns/stamp", scanRateLimiter, validateBody(campaignStampSchema), controller.stampCampaign);
 router.get("/campaigns/joined", controller.listJoinedCampaigns);
 router.post("/campaigns/:campaignId/join", controller.joinCampaign);
 

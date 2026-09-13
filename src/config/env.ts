@@ -23,6 +23,10 @@ export const env = {
 
   qrSigningSecret: required("QR_SIGNING_SECRET", "dev_qr_secret"),
   qrTokenTtlSeconds: parseInt(process.env.QR_TOKEN_TTL_SECONDS || "300", 10),
+  // Link encoded in campaign stamp QR codes. The phone camera opens it and the
+  // mobile app's /stamp screen redeems the token. Switch to an https universal
+  // link (e.g. https://app.thappa.in/stamp) once that domain is set up.
+  appLinkBase: process.env.APP_LINK_BASE || "thappa://stamp",
 
   seedAdminEmail: process.env.SEED_ADMIN_EMAIL || "admin@thappa.in",
   seedAdminPassword: process.env.SEED_ADMIN_PASSWORD || "ChangeMe123!",

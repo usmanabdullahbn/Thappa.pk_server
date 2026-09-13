@@ -127,7 +127,7 @@ async function ensureStampCard(
   business: { _id: unknown; loyaltyRule: { stampsRequired: number } },
   currentStamps: number
 ) {
-  const existing = await StampCard.findOne({ customerId: customer._id, branchId: branch._id });
+  const existing = await StampCard.findOne({ customerId: customer._id, branchId: branch._id, campaignId: null });
   if (existing) return existing;
 
   const card = await StampCard.create({

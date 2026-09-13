@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { asyncHandler, ApiError } from "../../middleware/errorHandler";
 import { Business } from "../../models/Business";
 import { Branch } from "../../models/Branch";
+import { Campaign } from "../../models/Campaign";
 import { StampCard } from "../../models/StampCard";
 import { StampTransaction } from "../../models/StampTransaction";
 import { Redemption } from "../../models/Redemption";
@@ -109,19 +110,35 @@ export const inviteStaff = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ staff: { id: staff._id, name: staff.name, email: staff.email } });
 });
 
+/** Campaigns this business can generate stamp QRs for: switched on and not expired. */
+export const listActiveCampaigns = asyncHandler(async (req: Request, res: Response) => {
+  const business = await getOwnBusinessOrThrow(req.user!.businessId);
+  const data = await Campaign.find({ businessId: business._id, isActive: true, expiresAt: { $gt: new Date() } }).sort({
+    expiresAt: 1,
+  });
+  res.json({ data });
+});
+
 export const generateQr = asyncHandler(async (req: Request, res: Response) => {
   await getOwnBusinessOrThrow(req.user!.businessId);
-  const { branchId, amountPaid } = req.body as { branchId: string; amountPaid?: number };
+  const { campaignId, branchId, amountPaid } = req.body as { campaignId: string; branchId: string; amountPaid?: number };
 
   const branch = await Branch.findOne({ _id: branchId, businessId: req.user!.businessId });
   if (!branch) throw new ApiError(404, "NOT_FOUND", "Branch not found for this business");
 
-  const result = await generateStampQr({ branchId, staffUserId: req.user!.userId, amountPaid });
+  const result = await generateStampQr({ branchId, campaignId, staffUserId: req.user!.userId, amountPaid });
   res.json({
     qrToken: result.qrToken,
     qrImageBase64: result.qrImageDataUrl,
+    link: result.link,
     expiresAt: result.expiresAt,
     nonce: result.nonce,
+    campaign: {
+      _id: result.campaign._id,
+      headline: result.campaign.headline,
+      stampsRequired: result.campaign.stampsRequired,
+      rewardDescription: result.campaign.rewardDescription,
+    },
   });
 });
 
@@ -174,7 +191,7 @@ export const manualAdjustStamp = asyncHandler(async (req: Request, res: Response
   const business = await Business.findById(req.user!.businessId);
   if (!business) throw new ApiError(404, "NOT_FOUND", "Business not found");
 
-  let card = await StampCard.findOne({ customerId, branchId });
+  let card = await StampCard.findOne({ customerId, branchId, campaignId: null });
   if (!card) {
     card = await StampCard.create({
       customerId,

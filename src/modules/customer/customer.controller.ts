@@ -11,7 +11,7 @@ import { Redemption } from "../../models/Redemption";
 import { QrToken } from "../../models/QrToken";
 import { generateSixDigitCode } from "../../utils/sixDigitCode";
 import { haversineDistanceMeters } from "../../utils/haversine";
-import { verifyStampQrToken } from "../qr/qr.service";
+import { isCampaignLive, verifyStampQrToken } from "../qr/qr.service";
 import { sendPushNotification } from "../../utils/push";
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
@@ -36,10 +36,11 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const CAMPAIGN_BUSINESS_FIELDS = "name category logoUrl status";
+const CARD_CAMPAIGN_FIELDS = "headline stampsRequired rewardDescription expiresAt";
 
-/** Admin-created campaigns that are switched on and belong to an ACTIVE business, newest first. */
+/** Admin-created campaigns that are switched on, not expired, and belong to an ACTIVE business, newest first. */
 export const listCampaigns = asyncHandler(async (_req: Request, res: Response) => {
-  const campaigns = await Campaign.find({ isActive: true })
+  const campaigns = await Campaign.find({ isActive: true, expiresAt: { $gt: new Date() } })
     .sort({ createdAt: -1 })
     .populate("businessId", CAMPAIGN_BUSINESS_FIELDS);
   res.json({ data: campaigns.filter((campaign: any) => campaign.businessId?.status === "ACTIVE") });
@@ -55,7 +56,7 @@ export const listJoinedCampaigns = asyncHandler(async (req: Request, res: Respon
 export const joinCampaign = asyncHandler(async (req: Request, res: Response) => {
   const { campaignId } = req.params;
   const campaign = mongoose.isValidObjectId(campaignId)
-    ? await Campaign.findOne({ _id: campaignId, isActive: true }).populate("businessId", "status")
+    ? await Campaign.findOne({ _id: campaignId, isActive: true, expiresAt: { $gt: new Date() } }).populate("businessId", "status")
     : null;
   if (!campaign || (campaign.businessId as any)?.status !== "ACTIVE") {
     throw new ApiError(404, "CAMPAIGN_NOT_FOUND", "This campaign is no longer available");
@@ -76,14 +77,16 @@ export const listStampCards = asyncHandler(async (req: Request, res: Response) =
   const cards = await StampCard.find({ customerId: req.user!.userId })
     .sort({ updatedAt: -1 })
     .populate("businessId", "name logoUrl category")
-    .populate("branchId", "name address");
+    .populate("branchId", "name address")
+    .populate("campaignId", CARD_CAMPAIGN_FIELDS);
   res.json({ data: cards });
 });
 
 export const getStampCardDetail = asyncHandler(async (req: Request, res: Response) => {
   const card = await StampCard.findOne({ _id: req.params.id, customerId: req.user!.userId })
     .populate("businessId", "name logoUrl category")
-    .populate("branchId", "name address");
+    .populate("branchId", "name address")
+    .populate("campaignId", CARD_CAMPAIGN_FIELDS);
   if (!card) throw new ApiError(404, "NOT_FOUND", "Stamp card not found");
 
   const transactions = await StampTransaction.find({ stampCardId: card._id }).sort({ createdAt: -1 }).limit(50);
@@ -163,7 +166,7 @@ export const redeemQr = asyncHandler(async (req: Request, res: Response) => {
 
     const cooldownHours = business.loyaltyRule.stampCooldownHours || 12;
     const cooldownStart = new Date(Date.now() - cooldownHours * 60 * 60 * 1000);
-    const existingCard = await StampCard.findOne({ customerId, branchId: branch._id });
+    const existingCard = await StampCard.findOne({ customerId, branchId: branch._id, campaignId: null });
     if (existingCard?.lastStampAt && existingCard.lastStampAt > cooldownStart) {
       throw new ApiError(429, "COOLDOWN", `You can collect one stamp every ${cooldownHours} hours here`);
     }
@@ -178,7 +181,7 @@ export const redeemQr = asyncHandler(async (req: Request, res: Response) => {
 
   try {
     await session.withTransaction(async () => {
-      card = await StampCard.findOne({ customerId, branchId: branch!._id }).session(session);
+      card = await StampCard.findOne({ customerId, branchId: branch!._id, campaignId: null }).session(session);
       if (!card) {
         const created = await StampCard.create(
           [
@@ -266,6 +269,164 @@ export const redeemQr = asyncHandler(async (req: Request, res: Response) => {
 
   res.json({
     stampCard: card,
+    rewardUnlocked: !!redemption,
+    redemption,
+  });
+});
+
+/**
+ * Redeems a campaign stamp QR generated on the business portal (opened by the
+ * phone camera or the in-app scanner). If the customer hasn't joined the
+ * campaign, the token is left unused and the app is told to show the join
+ * screen, so the same QR still works right after joining.
+ */
+export const stampCampaign = asyncHandler(async (req: Request, res: Response) => {
+  const { qrToken } = req.body as { qrToken: string };
+  const customerId = req.user!.userId;
+
+  const payload = verifyStampQrToken(qrToken);
+  if (!payload.campaignId) {
+    throw new ApiError(400, "QR_INVALID_TYPE", "This QR code isn't linked to a campaign.");
+  }
+
+  const [campaign, business, branch, customer] = await Promise.all([
+    Campaign.findOne({ _id: payload.campaignId, businessId: payload.businessId }),
+    Business.findById(payload.businessId),
+    Branch.findById(payload.branchId),
+    User.findById(customerId).select("name expoPushToken joinedCampaigns"),
+  ]);
+  if (!campaign || !isCampaignLive(campaign)) {
+    throw new ApiError(404, "CAMPAIGN_NOT_FOUND", "This campaign has ended or is no longer available");
+  }
+  if (!business || business.status !== "ACTIVE") {
+    throw new ApiError(403, "BUSINESS_INACTIVE", "This business is not currently active on Thappa");
+  }
+  if (!branch || !branch.isActive) throw new ApiError(404, "BRANCH_NOT_FOUND", "Branch not found or inactive");
+  if (!customer) throw new ApiError(404, "NOT_FOUND", "User not found");
+
+  const campaignSummary = {
+    _id: campaign._id,
+    headline: campaign.headline,
+    stampsRequired: campaign.stampsRequired,
+    rewardDescription: campaign.rewardDescription,
+    businessName: business.name,
+  };
+
+  const hasJoined = customer.joinedCampaigns.some((item) => item.campaignId === String(campaign._id));
+  if (!hasJoined) {
+    res.json({ status: "NOT_JOINED", campaign: campaignSummary });
+    return;
+  }
+
+  // Claim the single-use token atomically so two quick scans can't both stamp.
+  const tokenDoc = await QrToken.findOneAndUpdate({ nonce: payload.nonce, status: "ISSUED" }, { status: "REDEEMED" });
+  if (!tokenDoc) {
+    throw new ApiError(409, "QR_ALREADY_USED", "This QR code has already been used. Ask staff for a new one.");
+  }
+
+  const session = await mongoose.startSession();
+  let card: any;
+  let redemption: any = null;
+  let stampsCollected = 0;
+
+  try {
+    await session.withTransaction(async () => {
+      card = await StampCard.findOne({ customerId, campaignId: campaign._id }).session(session);
+      if (!card) {
+        const created = await StampCard.create(
+          [
+            {
+              customerId,
+              businessId: business._id,
+              branchId: branch._id,
+              campaignId: campaign._id,
+              currentStamps: 0,
+              stampsRequired: campaign.stampsRequired,
+            },
+          ],
+          { session }
+        );
+        card = created[0];
+      }
+
+      card.currentStamps += 1;
+      card.totalStampsEarnedLifetime += 1;
+      card.lastStampAt = new Date();
+      stampsCollected = card.currentStamps;
+
+      await StampTransaction.create(
+        [
+          {
+            stampCardId: card._id,
+            customerId,
+            businessId: business._id,
+            branchId: branch._id,
+            campaignId: campaign._id,
+            type: "EARN",
+            qrTokenNonce: payload.nonce,
+            amountPaid: payload.amountPaid,
+            deviceId: req.headers["x-device-id"] as string | undefined,
+          },
+        ],
+        { session }
+      );
+
+      if (card.currentStamps >= card.stampsRequired) {
+        const createdRedemption = await Redemption.create(
+          [
+            {
+              stampCardId: card._id,
+              customerId,
+              businessId: business._id,
+              branchId: branch._id,
+              redemptionCode: generateSixDigitCode(),
+              status: "PENDING",
+              rewardDescription: campaign.rewardDescription,
+            },
+          ],
+          { session }
+        );
+        redemption = createdRedemption[0];
+        card.currentStamps = 0;
+        card.totalRewardsRedeemedLifetime += 1;
+      }
+
+      await card.save({ session });
+    });
+  } catch (err) {
+    // Nothing was stamped, so give the customer their QR back.
+    await QrToken.updateOne({ nonce: payload.nonce }, { status: "ISSUED" });
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+
+  const io = req.app.get("io");
+  io?.to(`branch:${branch._id}`).emit("stamp:earned", {
+    branchId: String(branch._id),
+    customerId: String(customerId),
+    customerName: customer.name || "A customer",
+    campaignId: String(campaign._id),
+    campaignHeadline: campaign.headline,
+    currentStamps: stampsCollected,
+    stampsRequired: campaign.stampsRequired,
+    rewardUnlocked: !!redemption,
+  });
+
+  if (redemption) {
+    io?.to(`customer:${customerId}`).emit("reward:unlocked", { redemption });
+    await sendPushNotification(customer.expoPushToken, {
+      title: "🎉 Reward unlocked!",
+      body: `${campaign.rewardDescription} — show your code to staff to redeem.`,
+      data: { redemptionId: String(redemption._id) },
+    });
+  }
+
+  res.json({
+    status: "STAMPED",
+    campaign: campaignSummary,
+    stampCard: card,
+    stampsCollected,
     rewardUnlocked: !!redemption,
     redemption,
   });
