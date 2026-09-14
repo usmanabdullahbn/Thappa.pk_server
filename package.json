@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "seed": "ts-node src/seed.ts",
     "seed:demo": "ts-node src/seedDemo.ts",
+    "seed:cafes": "ts-node src/seedCafes.ts",
+    "seed:demo-campaigns": "ts-node src/seedDemoCampaigns.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

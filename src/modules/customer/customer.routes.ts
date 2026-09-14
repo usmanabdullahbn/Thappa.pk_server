@@ -39,6 +39,7 @@ router.get("/stamp-cards", controller.listStampCards);
 router.get("/stamp-cards/:id", controller.getStampCardDetail);
 
 router.post("/stamps/redeem-qr", scanRateLimiter, validateBody(redeemQrSchema), controller.redeemQr);
+router.get("/redemptions", controller.listMyRedemptions);
 router.get("/rewards/:redemptionId", controller.getRedemptionCode);
 
 router.get("/nearby-businesses", controller.nearbyBusinesses);

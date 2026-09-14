@@ -438,6 +438,27 @@ export const getRedemptionCode = asyncHandler(async (req: Request, res: Response
   res.json({ redemption });
 });
 
+/**
+ * All reward codes for the logged-in customer, newest first. Defaults to
+ * PENDING (unredeemed) only — pass ?status=all to include past redemptions.
+ * This is the "show this code at the counter" list the Rewards tab renders;
+ * a stamp card's `currentStamps` resets to 0 the moment a reward unlocks, so
+ * that alone can never be used to detect an unlocked reward.
+ */
+export const listMyRedemptions = asyncHandler(async (req: Request, res: Response) => {
+  const status = req.query.status as string | undefined;
+  const filter: Record<string, unknown> = { customerId: req.user!.userId };
+  if (status && status !== "all") filter.status = status;
+  else if (!status) filter.status = "PENDING";
+
+  const redemptions = await Redemption.find(filter)
+    .sort({ createdAt: -1 })
+    .populate("businessId", "name logoUrl category")
+    .populate({ path: "stampCardId", select: "campaignId", populate: { path: "campaignId", select: "headline" } });
+
+  res.json({ data: redemptions });
+});
+
 export const nearbyBusinesses = asyncHandler(async (req: Request, res: Response) => {
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
